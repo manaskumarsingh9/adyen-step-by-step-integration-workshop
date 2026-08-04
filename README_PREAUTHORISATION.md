@@ -10,7 +10,7 @@ Note: This is a continuation of the advanced-flow explained in the [README](READ
 
 ### Steps
 
-Read: https://docs.adyen.com/online-payments/classic-integrations/modify-payments/adjust-authorisation/
+Read: [https://docs.adyen.com/online-payments/classic-integrations/modify-payments/adjust-authorisation/](https://docs.adyen.com/online-payments/adjust-authorisation)
 
 You can start by implementing the asynchronous flow.
 Once that's working, you can modify the solution slightly to try out to synchronous flow which would require you to keep track of a blob.
