@@ -32,3 +32,6 @@ replay_pid*
 
 # Mac
 .DS_Store
+
+# Local secrets (Adyen API/Client/HMAC keys) - do not commit real credentials
+src/main/resources/application.properties
