@@ -1,0 +1,40 @@
+<html lang="en"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout}">
+<head>
+    <title>Preauthorisation</title>
+</head>
+<body>
+<main layout:fragment="content">
+    <div class="main-container">
+        <div class="info">
+            <h1>Manage your preauthorisation</h1>
+            <p>Preauthorize now, adjust the amount, then capture, cancel or refund.</p>
+        </div>
+
+        <div class="order-summary">
+            <p th:if="${preauth}">
+                pspReference: <span th:text="${preauth.pspReference()}"></span><br/>
+                reference: <span th:text="${preauth.reference()}"></span><br/>
+                authorised amount: <span th:text="${preauth.amountValue()}"></span> <span th:text="${preauth.currency()}"></span>
+            </p>
+            <p th:unless="${preauth}">No preauthorisation yet. Start one from the home page.</p>
+        </div>
+
+        <div class="cart-footer">
+            <button id="modify-amount-button" class="button" th:disabled="${preauth == null}">Add 10.00 to amount</button>
+            <button id="capture-button" class="button" th:disabled="${preauth == null}">Capture</button>
+            <button id="cancel-button" class="button" th:disabled="${preauth == null}">Cancel</button>
+            <button id="refund-button" class="button" th:disabled="${preauth == null}">Refund</button>
+        </div>
+
+        <div class="info">
+            <p id="status"></p>
+        </div>
+    </div>
+
+    <script type="text/javascript" src="/preauthorisation.js"></script>
+</main>
+</body>
+</html>

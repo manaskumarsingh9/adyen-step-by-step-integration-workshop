@@ -1,5 +1,13 @@
 const clientKey = document.getElementById("clientKey").innerHTML;
+const type = document.getElementById("type").innerHTML;
 const { AdyenCheckout, Dropin } = window.AdyenWeb;
+
+// Tokenization Module - In "subscription" mode we tokenize the card with a zero-value payment
+// instead of charging the shopper for the cart.
+const isSubscription = type === "subscription";
+// Preauthorisation Module - In "preauthorisation" mode we authorize now and capture later.
+const isPreauthorisation = type === "preauthorisation";
+const paymentEndpoint = isSubscription ? "/api/subscription-create" : isPreauthorisation ? "/api/preauthorisation" : "/api/payments";
 
 // Starts the (Adyen.Web) AdyenCheckout with your specified configuration by calling the `/paymentMethods` endpoint.
 async function startCheckout() {
@@ -29,7 +37,7 @@ async function startCheckout() {
                 console.info("onSubmit", state, component, actions);
                 try {
                     if (state.isValid) {
-                        const { action, order, resultCode } = await fetch("/api/payments", {
+                        const { action, order, resultCode } = await fetch(paymentEndpoint, {
                             method: "POST",
                             body: state.data ? JSON.stringify(state.data) : "",
                             headers: {
@@ -98,7 +106,8 @@ async function startCheckout() {
                 holderNameRequired: true,
                 name: "Credit or debit card",
                 amount: {
-                    value: 9998,
+                    // Subscriptions tokenize with a zero-value payment, so the pay button shows 0.
+                    value: isSubscription ? 0 : 9998,
                     currency: "EUR",
                 },
                 placeholders: {

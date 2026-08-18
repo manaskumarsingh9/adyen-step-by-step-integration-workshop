@@ -1,0 +1,35 @@
+<html lang="en"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout}">
+<head>
+    <title>Subscription</title>
+</head>
+<body>
+<main layout:fragment="content">
+    <div class="main-container">
+        <div class="info">
+            <h1>Manage your subscription</h1>
+            <p>Rent your headphones for 5 euros a month.</p>
+        </div>
+
+        <!-- Token status, rendered by the server from the TokenStore -->
+        <div class="order-summary">
+            <p th:if="${token}">Stored token: <span th:text="${token}"></span></p>
+            <p th:unless="${token}">No subscription yet. Start one from the home page.</p>
+        </div>
+
+        <div class="cart-footer">
+            <button id="charge-button" class="button" th:disabled="${token == null}">Charge 5.00 now</button>
+            <button id="cancel-button" class="button" th:disabled="${token == null}">Cancel subscription</button>
+        </div>
+
+        <div class="info">
+            <p id="status"></p>
+        </div>
+    </div>
+
+    <script type="text/javascript" src="/subscription.js"></script>
+</main>
+</body>
+</html>

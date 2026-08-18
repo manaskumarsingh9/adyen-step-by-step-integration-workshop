@@ -2,8 +2,12 @@ package com.adyen.workshop.controllers;
 
 import com.adyen.model.RequestOptions;
 import com.adyen.model.checkout.*;
+import com.adyen.workshop.PreauthStore;
+import com.adyen.workshop.TokenStore;
 import com.adyen.workshop.configurations.ApplicationConfiguration;
+import com.adyen.service.checkout.ModificationsApi;
 import com.adyen.service.checkout.PaymentsApi;
+import com.adyen.service.checkout.RecurringApi;
 import com.adyen.service.exception.ApiException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -26,12 +30,24 @@ import java.util.UUID;
 public class ApiController {
     private final Logger log = LoggerFactory.getLogger(ApiController.class);
 
+    // Shopper reference used to look up/store the subscription token. In a real
+    // application this would come from the authenticated shopper's session.
+    private static final String SUBSCRIPTION_SHOPPER_REFERENCE = "shopperReference";
+
     private final ApplicationConfiguration applicationConfiguration;
     private final PaymentsApi paymentsApi;
+    private final RecurringApi recurringApi;
+    private final ModificationsApi modificationsApi;
+    private final TokenStore tokenStore;
+    private final PreauthStore preauthStore;
 
-    public ApiController(ApplicationConfiguration applicationConfiguration, PaymentsApi paymentsApi) {
+    public ApiController(ApplicationConfiguration applicationConfiguration, PaymentsApi paymentsApi, RecurringApi recurringApi, ModificationsApi modificationsApi, TokenStore tokenStore, PreauthStore preauthStore) {
         this.applicationConfiguration = applicationConfiguration;
         this.paymentsApi = paymentsApi;
+        this.recurringApi = recurringApi;
+        this.modificationsApi = modificationsApi;
+        this.tokenStore = tokenStore;
+        this.preauthStore = preauthStore;
     }
 
     // Step 0
@@ -123,6 +139,257 @@ public class ApiController {
         log.info("PaymentsRequest {}", paymentRequest);
         var response = paymentsApi.payments(paymentRequest, requestOptions);
         log.info("PaymentsResponse {}", response);
+        return ResponseEntity.ok().body(response);
+    }
+
+    // Tokenization Module - Zero-value payment to tokenize the shopper's card for future (subscription) use.
+    // See: https://docs.adyen.com/online-payments/tokenization/create-tokens
+    @PostMapping("/api/subscription-create")
+    public ResponseEntity<PaymentResponse> subscriptionCreate(@RequestBody PaymentRequest body) throws IOException, ApiException {
+        var paymentRequest = new PaymentRequest();
+
+        // Zero-auth: authorize for 0 to validate/tokenize the card without charging the shopper.
+        var amount = new Amount()
+                .currency("EUR")
+                .value(0L);
+        paymentRequest.setAmount(amount);
+        paymentRequest.setMerchantAccount(applicationConfiguration.getAdyenMerchantAccount());
+        paymentRequest.setChannel(PaymentRequest.ChannelEnum.WEB);
+        paymentRequest.setPaymentMethod(body.getPaymentMethod());
+
+        var orderRef = UUID.randomUUID().toString();
+        paymentRequest.setReference(orderRef);
+        paymentRequest.setReturnUrl("http://localhost:8080/handleShopperRedirect");
+
+        paymentRequest.setOrigin("https://localhost:8080");
+        paymentRequest.setBrowserInfo(body.getBrowserInfo());
+        paymentRequest.setShopperIP("192.168.0.1");
+        paymentRequest.setShopperInteraction(PaymentRequest.ShopperInteractionEnum.ECOMMERCE);
+
+        // Required to create a token: store the payment method against a shopperReference,
+        // and flag the intended future usage as a recurring Subscription.
+        paymentRequest.setShopperReference(SUBSCRIPTION_SHOPPER_REFERENCE);
+        paymentRequest.setStorePaymentMethod(true);
+        paymentRequest.setRecurringProcessingModel(PaymentRequest.RecurringProcessingModelEnum.SUBSCRIPTION);
+
+        var requestOptions = new RequestOptions();
+        requestOptions.setIdempotencyKey(UUID.randomUUID().toString());
+
+        log.info("SubscriptionCreate PaymentsRequest {}", paymentRequest);
+        var response = paymentsApi.payments(paymentRequest, requestOptions);
+        log.info("SubscriptionCreate PaymentsResponse {}", response);
+        return ResponseEntity.ok().body(response);
+    }
+
+    // Tokenization Module - Charge the shopper using the token stored from /api/subscription-create.
+    // The recurringDetailReference (token) is populated by the RECURRING_CONTRACT webhook, see WebhookController.
+    // See: https://docs.adyen.com/online-payments/tokenization/make-token-payments
+    @PostMapping("/api/subscription-payment")
+    public ResponseEntity<?> subscriptionPayment() throws IOException, ApiException {
+        var token = tokenStore.get(SUBSCRIPTION_SHOPPER_REFERENCE);
+        if (token == null) {
+            log.warn("No stored token found for shopperReference {}, cannot charge subscription", SUBSCRIPTION_SHOPPER_REFERENCE);
+            return ResponseEntity.unprocessableEntity().body("No stored token found for this shopper. Create a subscription first.");
+        }
+
+        var paymentRequest = new PaymentRequest();
+
+        var amount = new Amount()
+                .currency("EUR")
+                .value(500L); // 5 euros/month, per the briefing
+        paymentRequest.setAmount(amount);
+        paymentRequest.setMerchantAccount(applicationConfiguration.getAdyenMerchantAccount());
+        paymentRequest.setChannel(PaymentRequest.ChannelEnum.WEB);
+
+        var paymentMethod = new StoredPaymentMethodDetails().storedPaymentMethodId(token);
+        paymentRequest.setPaymentMethod(new CheckoutPaymentMethod(paymentMethod));
+
+        paymentRequest.setReference(UUID.randomUUID().toString());
+        paymentRequest.setShopperReference(SUBSCRIPTION_SHOPPER_REFERENCE);
+        // ContAuth: the shopper is not present, this is a merchant-initiated recurring charge.
+        paymentRequest.setShopperInteraction(PaymentRequest.ShopperInteractionEnum.CONTAUTH);
+        paymentRequest.setRecurringProcessingModel(PaymentRequest.RecurringProcessingModelEnum.SUBSCRIPTION);
+
+        var requestOptions = new RequestOptions();
+        requestOptions.setIdempotencyKey(UUID.randomUUID().toString());
+
+        log.info("SubscriptionPayment PaymentsRequest {}", paymentRequest);
+        var response = paymentsApi.payments(paymentRequest, requestOptions);
+        log.info("SubscriptionPayment PaymentsResponse {}", response);
+        return ResponseEntity.ok().body(response);
+    }
+
+    // Tokenization Module - Cancel the subscription by deleting the stored token.
+    // See: https://docs.adyen.com/online-payments/tokenization/managing-tokens/#delete-stored-details
+    @PostMapping("/api/subscriptions-cancel")
+    public ResponseEntity<?> subscriptionsCancel() throws IOException, ApiException {
+        var token = tokenStore.get(SUBSCRIPTION_SHOPPER_REFERENCE);
+        if (token == null) {
+            log.warn("No stored token found for shopperReference {}, nothing to cancel", SUBSCRIPTION_SHOPPER_REFERENCE);
+            return ResponseEntity.unprocessableEntity().body("No stored token found for this shopper.");
+        }
+
+        log.info("Deleting token {} for shopperReference {}", token, SUBSCRIPTION_SHOPPER_REFERENCE);
+        recurringApi.deleteTokenForStoredPaymentDetails(token, SUBSCRIPTION_SHOPPER_REFERENCE, applicationConfiguration.getAdyenMerchantAccount());
+        tokenStore.remove(SUBSCRIPTION_SHOPPER_REFERENCE);
+
+        return ResponseEntity.ok().build();
+    }
+
+    // Preauthorisation Module - Preauthorize a payment: authorize now, capture later.
+    // additionalData.authorisationType=PreAuth lets us adjust the amount afterwards; additionalData.manualCapture=true
+    // means Adyen won't auto-capture on authorisation, so we can capture explicitly via /api/capture.
+    // See: https://docs.adyen.com/online-payments/adjust-authorisation/adjust-with-preauth/#pre-authorize
+    // and: https://docs.adyen.com/online-payments/capture/?tab=individual_payment_1_2
+    @PostMapping("/api/preauthorisation")
+    public ResponseEntity<PaymentResponse> preauthorisation(@RequestBody PaymentRequest body) throws IOException, ApiException {
+        var paymentRequest = new PaymentRequest();
+
+        var amount = new Amount()
+                .currency("EUR")
+                .value(9998L);
+        paymentRequest.setAmount(amount);
+        paymentRequest.setMerchantAccount(applicationConfiguration.getAdyenMerchantAccount());
+        paymentRequest.setChannel(PaymentRequest.ChannelEnum.WEB);
+        paymentRequest.setPaymentMethod(body.getPaymentMethod());
+
+        var orderRef = UUID.randomUUID().toString();
+        paymentRequest.setReference(orderRef);
+        paymentRequest.setReturnUrl("http://localhost:8080/handleShopperRedirect");
+
+        var authenticationData = new AuthenticationData();
+        authenticationData.setAttemptAuthentication(AuthenticationData.AttemptAuthenticationEnum.ALWAYS);
+        paymentRequest.setAuthenticationData(authenticationData);
+
+        paymentRequest.setOrigin("https://localhost:8080");
+        paymentRequest.setBrowserInfo(body.getBrowserInfo());
+        paymentRequest.setShopperIP("192.168.0.1");
+        paymentRequest.setShopperInteraction(PaymentRequest.ShopperInteractionEnum.ECOMMERCE);
+
+        var billingAddress = new BillingAddress();
+        billingAddress.setCity("Amsterdam");
+        billingAddress.setCountry("NL");
+        billingAddress.setPostalCode("1012KK");
+        billingAddress.setStreet("Rokin");
+        billingAddress.setHouseNumberOrName("49");
+        paymentRequest.setBillingAddress(billingAddress);
+
+        paymentRequest.setAdditionalData(Map.of(
+                "authorisationType", "PreAuth",
+                "manualCapture", "true"
+        ));
+
+        var requestOptions = new RequestOptions();
+        requestOptions.setIdempotencyKey(UUID.randomUUID().toString());
+
+        log.info("PreauthorisationRequest {}", paymentRequest);
+        var response = paymentsApi.payments(paymentRequest, requestOptions);
+        log.info("PreauthorisationResponse {}", response);
+
+        if (response.getResultCode() == PaymentResponse.ResultCodeEnum.AUTHORISED && response.getPspReference() != null) {
+            preauthStore.store(response.getPspReference(), orderRef, amount.getValue(), amount.getCurrency());
+        }
+
+        return ResponseEntity.ok().body(response);
+    }
+
+    // Preauthorisation Module - Adjust (increase) the pre-authorized amount (asynchronous flow).
+    // See: https://docs.adyen.com/online-payments/adjust-authorisation/adjust-with-preauth/#adjust-auth
+    @PostMapping("/api/modify-amount")
+    public ResponseEntity<?> modifyAmount(@RequestBody(required = false) Map<String, Long> body) throws IOException, ApiException {
+        var preauth = preauthStore.get();
+        if (preauth == null) {
+            log.warn("No pre-authorised payment found, cannot modify amount");
+            return ResponseEntity.unprocessableEntity().body("No pre-authorised payment found. Preauthorize a payment first.");
+        }
+
+        // Default demo increment if the caller doesn't specify one: add 10.00 EUR.
+        long additionalAmount = (body != null && body.get("additionalAmount") != null) ? body.get("additionalAmount") : 1000L;
+        long newAmountValue = preauth.amountValue() + additionalAmount;
+
+        var paymentAmountUpdateRequest = new PaymentAmountUpdateRequest();
+        paymentAmountUpdateRequest.setMerchantAccount(applicationConfiguration.getAdyenMerchantAccount());
+        paymentAmountUpdateRequest.setReference(UUID.randomUUID().toString());
+        paymentAmountUpdateRequest.setIndustryUsage(PaymentAmountUpdateRequest.IndustryUsageEnum.DELAYEDCHARGE);
+        paymentAmountUpdateRequest.setAmount(new Amount().currency(preauth.currency()).value(newAmountValue));
+
+        log.info("PaymentAmountUpdateRequest {}", paymentAmountUpdateRequest);
+        var response = modificationsApi.updateAuthorisedAmount(preauth.pspReference(), paymentAmountUpdateRequest);
+        log.info("PaymentAmountUpdateResponse {}", response);
+
+        // The /amountUpdates response only means the request was received; the final outcome
+        // arrives via the AUTHORISATION_ADJUSTMENT webhook. We update our local tracker optimistically.
+        preauthStore.updateAmount(newAmountValue);
+
+        return ResponseEntity.ok().body(response);
+    }
+
+    // Preauthorisation Module - Capture the (possibly adjusted) pre-authorized amount.
+    // See: https://docs.adyen.com/online-payments/capture/
+    @PostMapping("/api/capture")
+    public ResponseEntity<?> capture(@RequestBody(required = false) Map<String, Long> body) throws IOException, ApiException {
+        var preauth = preauthStore.get();
+        if (preauth == null) {
+            log.warn("No pre-authorised payment found, cannot capture");
+            return ResponseEntity.unprocessableEntity().body("No pre-authorised payment found. Preauthorize a payment first.");
+        }
+
+        long amountToCapture = (body != null && body.get("amount") != null) ? body.get("amount") : preauth.amountValue();
+
+        var paymentCaptureRequest = new PaymentCaptureRequest();
+        paymentCaptureRequest.setMerchantAccount(applicationConfiguration.getAdyenMerchantAccount());
+        paymentCaptureRequest.setReference(UUID.randomUUID().toString());
+        paymentCaptureRequest.setAmount(new Amount().currency(preauth.currency()).value(amountToCapture));
+
+        log.info("PaymentCaptureRequest {}", paymentCaptureRequest);
+        var response = modificationsApi.captureAuthorisedPayment(preauth.pspReference(), paymentCaptureRequest);
+        log.info("PaymentCaptureResponse {}", response);
+
+        return ResponseEntity.ok().body(response);
+    }
+
+    // Preauthorisation Module - Cancel a pre-authorized (not yet captured) payment, by PSP reference.
+    // See: https://docs.adyen.com/online-payments/cancel/
+    @PostMapping("/api/cancel")
+    public ResponseEntity<?> cancel() throws IOException, ApiException {
+        var preauth = preauthStore.get();
+        if (preauth == null) {
+            log.warn("No pre-authorised payment found, cannot cancel");
+            return ResponseEntity.unprocessableEntity().body("No pre-authorised payment found. Preauthorize a payment first.");
+        }
+
+        var paymentCancelRequest = new PaymentCancelRequest();
+        paymentCancelRequest.setMerchantAccount(applicationConfiguration.getAdyenMerchantAccount());
+        paymentCancelRequest.setReference(UUID.randomUUID().toString());
+
+        log.info("PaymentCancelRequest {}", paymentCancelRequest);
+        var response = modificationsApi.cancelAuthorisedPaymentByPspReference(preauth.pspReference(), paymentCancelRequest);
+        log.info("PaymentCancelResponse {}", response);
+
+        return ResponseEntity.ok().body(response);
+    }
+
+    // Preauthorisation Module - Refund a captured payment.
+    // See: https://docs.adyen.com/online-payments/refund/
+    @PostMapping("/api/refund")
+    public ResponseEntity<?> refund(@RequestBody(required = false) Map<String, Long> body) throws IOException, ApiException {
+        var preauth = preauthStore.get();
+        if (preauth == null) {
+            log.warn("No pre-authorised payment found, cannot refund");
+            return ResponseEntity.unprocessableEntity().body("No pre-authorised payment found. Preauthorize a payment first.");
+        }
+
+        long amountToRefund = (body != null && body.get("amount") != null) ? body.get("amount") : preauth.amountValue();
+
+        var paymentRefundRequest = new PaymentRefundRequest();
+        paymentRefundRequest.setMerchantAccount(applicationConfiguration.getAdyenMerchantAccount());
+        paymentRefundRequest.setReference(UUID.randomUUID().toString());
+        paymentRefundRequest.setAmount(new Amount().currency(preauth.currency()).value(amountToRefund));
+
+        log.info("PaymentRefundRequest {}", paymentRefundRequest);
+        var response = modificationsApi.refundCapturedPayment(preauth.pspReference(), paymentRefundRequest);
+        log.info("PaymentRefundResponse {}", response);
+
         return ResponseEntity.ok().body(response);
     }
 

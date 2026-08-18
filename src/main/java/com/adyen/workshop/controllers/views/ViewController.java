@@ -1,5 +1,7 @@
 package com.adyen.workshop.controllers.views;
 
+import com.adyen.workshop.PreauthStore;
+import com.adyen.workshop.TokenStore;
 import com.adyen.workshop.configurations.ApplicationConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,9 +17,13 @@ public class ViewController {
     private final Logger log = LoggerFactory.getLogger(ViewController.class);
 
     private final ApplicationConfiguration applicationConfiguration;
+    private final TokenStore tokenStore;
+    private final PreauthStore preauthStore;
 
-    public ViewController(ApplicationConfiguration applicationConfiguration) {
+    public ViewController(ApplicationConfiguration applicationConfiguration, TokenStore tokenStore, PreauthStore preauthStore) {
         this.applicationConfiguration = applicationConfiguration;
+        this.tokenStore = tokenStore;
+        this.preauthStore = preauthStore;
     }
 
     @GetMapping("/")
@@ -36,6 +42,20 @@ public class ViewController {
         model.addAttribute("type", type);
         model.addAttribute("clientKey", this.applicationConfiguration.getAdyenClientKey());
         return "checkout";
+    }
+
+    // Tokenization Module - Shows the stored token and lets you charge or cancel the subscription.
+    @GetMapping("/subscription")
+    public String subscription(Model model) {
+        model.addAttribute("token", tokenStore.get("shopperReference"));
+        return "subscription";
+    }
+
+    // Preauthorisation Module - Shows the current preauthorisation and lets you modify/capture/cancel/refund.
+    @GetMapping("/preauthorisation")
+    public String preauthorisation(Model model) {
+        model.addAttribute("preauth", preauthStore.get());
+        return "preauthorisation";
     }
 
     @GetMapping("/result/{type}")
