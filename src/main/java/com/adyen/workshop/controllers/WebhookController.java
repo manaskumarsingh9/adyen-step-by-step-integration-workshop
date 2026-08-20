@@ -3,6 +3,7 @@ package com.adyen.workshop.controllers;
 import com.adyen.model.notification.NotificationRequest;
 import com.adyen.model.notification.NotificationRequestItem;
 import com.adyen.util.HMACValidator;
+import com.adyen.workshop.PreauthStore;
 import com.adyen.workshop.TokenStore;
 import com.adyen.workshop.configurations.ApplicationConfiguration;
 import org.apache.coyote.Response;
@@ -32,11 +33,14 @@ public class WebhookController {
 
     private final TokenStore tokenStore;
 
+    private final PreauthStore preauthStore;
+
     @Autowired
-    public WebhookController(ApplicationConfiguration applicationConfiguration, HMACValidator hmacValidator, TokenStore tokenStore) {
+    public WebhookController(ApplicationConfiguration applicationConfiguration, HMACValidator hmacValidator, TokenStore tokenStore, PreauthStore preauthStore) {
         this.applicationConfiguration = applicationConfiguration;
         this.hmacValidator = hmacValidator;
         this.tokenStore = tokenStore;
+        this.preauthStore = preauthStore;
     }
 
     // Step 16 - Validate the HMAC signature using the ADYEN_HMAC_KEY
@@ -125,6 +129,16 @@ public class WebhookController {
             case "REFUNDED_REVERSED":
                 if (item.isSuccess()) {
                     log.info("Preauthorisation event {} succeeded - pspReference {}, originalReference {}", item.getEventCode(), item.getPspReference(), item.getOriginalReference());
+
+                    // Once a preauthorisation is cancelled, there is nothing left to capture/cancel/
+                    // refund - clear the store so the UI reflects that (buttons disable, amount clears)
+                    // instead of continuing to show a hold that Adyen has already released.
+                    if ("CANCELLATION".equals(item.getEventCode()) || "TECHNICAL_CANCEL".equals(item.getEventCode())) {
+                        var current = preauthStore.get();
+                        if (current != null && current.pspReference().equals(item.getOriginalReference())) {
+                            preauthStore.clear();
+                        }
+                    }
                 } else {
                     log.warn("Preauthorisation event {} failed - pspReference {}, reason {}", item.getEventCode(), item.getPspReference(), item.getReason());
                 }
