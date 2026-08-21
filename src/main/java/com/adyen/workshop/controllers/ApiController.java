@@ -393,6 +393,14 @@ public class ApiController {
         return ResponseEntity.ok().body(response);
     }
 
+    // Preauthorisation Module - Lightweight JSON status check, polled by preauthorisation.js so the
+    // page can reload itself once a modification webhook lands, instead of the shopper needing to
+    // refresh manually while waiting for Adyen's async confirmation.
+    @GetMapping("/api/preauthorisation/status")
+    public ResponseEntity<PreauthStore.Preauthorisation> preauthorisationStatus() {
+        return ResponseEntity.ok(preauthStore.get());
+    }
+
     // Step 13 - Handle details call (triggered after Native 3DS2 flow)
     @PostMapping("/api/payments/details")
     public ResponseEntity<PaymentDetailsResponse> paymentsDetails(@RequestBody PaymentDetailsRequest detailsRequest) throws IOException, ApiException

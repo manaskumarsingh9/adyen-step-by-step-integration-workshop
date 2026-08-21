@@ -13,7 +13,8 @@
             <p>Preauthorize now, adjust the amount, then capture, cancel or refund.</p>
         </div>
 
-        <div class="order-summary">
+        <div class="order-summary"
+             th:attr="data-psp=${preauth != null ? preauth.pspReference() : ''}, data-status=${preauth != null ? preauth.status() : ''}, data-amount=${preauth != null ? preauth.amountValue() : ''}">
             <p th:if="${preauth}">
                 pspReference: <span th:text="${preauth.pspReference()}"></span><br/>
                 reference: <span th:text="${preauth.reference()}"></span><br/>
