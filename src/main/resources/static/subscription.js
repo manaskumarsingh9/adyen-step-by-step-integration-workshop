@@ -105,6 +105,20 @@ document.getElementById("charge-button").addEventListener("click", async () => {
     }
 });
 
+document.getElementById("manual-charge-button").addEventListener("click", async () => {
+    const tokenInput = document.getElementById("manual-token-input");
+    const token = tokenInput.value.trim();
+    if (!token) {
+        statusElement.innerHTML = "Paste a recurringDetailReference token first.";
+        return;
+    }
+
+    const ok = await callEndpoint("/makepaymentwithtoken/" + encodeURIComponent(token), "Charged using the manually-entered token");
+    if (ok) {
+        pollForWebhookToast();
+    }
+});
+
 document.getElementById("cancel-button").addEventListener("click", async () => {
     const ok = await callEndpoint("/api/subscriptions-cancel", "Cancelled the subscription");
     if (ok) {

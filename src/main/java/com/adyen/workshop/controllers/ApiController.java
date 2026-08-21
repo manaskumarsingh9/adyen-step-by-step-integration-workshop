@@ -230,6 +230,42 @@ public class ApiController {
         return ResponseEntity.ok().body(response);
     }
 
+    // Tokenization Module - Charge using a token supplied directly as a path variable, rather than
+    // looked up automatically from TokenStore like /api/subscription-payment does. This is what the
+    // Adyen workshop validation script explicitly asks for: capture the recurringDetailReference
+    // from the RECURRING_CONTRACT/AUTHORISATION webhook, then manually enter it here to make a
+    // payment - proving the token was actually captured, rather than trusting an opaque internal
+    // lookup no one has to look at.
+    // See: https://docs.adyen.com/online-payments/tokenization/make-token-payments
+    @PostMapping("/makepaymentwithtoken/{token}")
+    public ResponseEntity<?> makePaymentWithToken(@PathVariable String token) throws IOException, ApiException {
+        var paymentRequest = new PaymentRequest();
+
+        var amount = new Amount()
+                .currency("EUR")
+                .value(500L); // 5 euros/month, per the briefing
+        paymentRequest.setAmount(amount);
+        paymentRequest.setMerchantAccount(applicationConfiguration.getAdyenMerchantAccount());
+        paymentRequest.setChannel(PaymentRequest.ChannelEnum.WEB);
+
+        var paymentMethod = new StoredPaymentMethodDetails().storedPaymentMethodId(token);
+        paymentRequest.setPaymentMethod(new CheckoutPaymentMethod(paymentMethod));
+
+        paymentRequest.setReference(UUID.randomUUID().toString());
+        paymentRequest.setShopperReference(SUBSCRIPTION_SHOPPER_REFERENCE);
+        // ContAuth: the shopper is not present, this is a merchant-initiated recurring charge.
+        paymentRequest.setShopperInteraction(PaymentRequest.ShopperInteractionEnum.CONTAUTH);
+        paymentRequest.setRecurringProcessingModel(PaymentRequest.RecurringProcessingModelEnum.SUBSCRIPTION);
+
+        var requestOptions = new RequestOptions();
+        requestOptions.setIdempotencyKey(UUID.randomUUID().toString());
+
+        log.info("MakePaymentWithToken PaymentsRequest (manually-entered token={}) {}", token, paymentRequest);
+        var response = paymentsApi.payments(paymentRequest, requestOptions);
+        log.info("MakePaymentWithToken PaymentsResponse {}", response);
+        return ResponseEntity.ok().body(response);
+    }
+
     // Tokenization Module - Cancel the subscription by deleting the stored token.
     // See: https://docs.adyen.com/online-payments/tokenization/managing-tokens/#delete-stored-details
     @PostMapping("/api/subscriptions-cancel")

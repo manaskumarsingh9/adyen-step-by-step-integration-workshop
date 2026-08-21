@@ -36,6 +36,19 @@
         <div class="info">
             <p id="status"></p>
         </div>
+
+        <div class="info">
+            <p>Or charge by manually entering a <code>recurringDetailReference</code> token (e.g. one
+                you copied from the webhook log below) - this calls
+                <code>/makepaymentwithtoken/{token}</code> directly with whatever you paste in,
+                instead of looking a token up automatically.</p>
+        </div>
+
+        <div class="cart-footer">
+            <input type="text" id="manual-token-input" class="text-input"
+                   placeholder="Paste recurringDetailReference here"/>
+            <button id="manual-charge-button" class="button">Charge with this token</button>
+        </div>
     </div>
 
     <div id="webhook-toast" class="webhook-toast" role="status" aria-live="polite"></div>

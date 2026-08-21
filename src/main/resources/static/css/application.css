@@ -80,6 +80,22 @@ a:hover {
     user-select: all;
 }
 
+.text-input {
+    background: #fff;
+    border: 1px solid #e6e9eb;
+    border-radius: 6px;
+    color: #00112c;
+    font-size: 1em;
+    margin: 8px;
+    padding: 15px;
+    width: 100%;
+}
+
+.text-input:focus {
+    border-color: #0abf53;
+    outline: none;
+}
+
 /* end General page body */
 
 /* Index page */
