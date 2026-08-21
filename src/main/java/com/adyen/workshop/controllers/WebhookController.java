@@ -3,6 +3,7 @@ package com.adyen.workshop.controllers;
 import com.adyen.model.notification.NotificationRequest;
 import com.adyen.model.notification.NotificationRequestItem;
 import com.adyen.util.HMACValidator;
+import com.adyen.workshop.NotificationBroadcaster;
 import com.adyen.workshop.PreauthEventStore;
 import com.adyen.workshop.PreauthStore;
 import com.adyen.workshop.TokenEventStore;
@@ -41,14 +42,17 @@ public class WebhookController {
 
     private final PreauthEventStore preauthEventStore;
 
+    private final NotificationBroadcaster notificationBroadcaster;
+
     @Autowired
-    public WebhookController(ApplicationConfiguration applicationConfiguration, HMACValidator hmacValidator, TokenStore tokenStore, TokenEventStore tokenEventStore, PreauthStore preauthStore, PreauthEventStore preauthEventStore) {
+    public WebhookController(ApplicationConfiguration applicationConfiguration, HMACValidator hmacValidator, TokenStore tokenStore, TokenEventStore tokenEventStore, PreauthStore preauthStore, PreauthEventStore preauthEventStore, NotificationBroadcaster notificationBroadcaster) {
         this.applicationConfiguration = applicationConfiguration;
         this.hmacValidator = hmacValidator;
         this.tokenStore = tokenStore;
         this.tokenEventStore = tokenEventStore;
         this.preauthStore = preauthStore;
         this.preauthEventStore = preauthEventStore;
+        this.notificationBroadcaster = notificationBroadcaster;
     }
 
     // Step 16 - Validate the HMAC signature using the ADYEN_HMAC_KEY
@@ -114,10 +118,11 @@ public class WebhookController {
             return;
         }
 
-        // Record every attempt (success or failure) tied to the subscription shopper, so the
-        // frontend can poll for it and show a toast notification reflecting what Adyen actually
+        // Record every attempt (success or failure) tied to the subscription shopper, and push it
+        // to whichever page(s) are currently open, so the toast reflects what Adyen actually
         // reported - independent of whether it also carried a usable token below.
         tokenEventStore.record(item.getEventCode(), item.isSuccess(), item.getReason());
+        notificationBroadcaster.broadcast("token", item.getEventCode(), item.isSuccess(), item.getReason());
 
         if (!item.isSuccess()) {
             log.warn("Ignoring token from unsuccessful webhook, eventCode {}", item.getEventCode());
@@ -155,9 +160,10 @@ public class WebhookController {
             case "REFUND":
             case "REFUND_FAILED":
             case "REFUNDED_REVERSED":
-                // Record every attempt (success or failure) so the frontend can poll for it and
-                // show a toast notification reflecting what Adyen actually reported.
+                // Record every attempt (success or failure) and push it to whichever page(s) are
+                // currently open, so the toast reflects what Adyen actually reported.
                 preauthEventStore.record(item.getEventCode(), item.isSuccess(), item.getReason());
+                notificationBroadcaster.broadcast("preauth", item.getEventCode(), item.isSuccess(), item.getReason());
 
                 if (item.isSuccess()) {
                     log.info("Preauthorisation event {} succeeded - pspReference {}, originalReference {}", item.getEventCode(), item.getPspReference(), item.getOriginalReference());

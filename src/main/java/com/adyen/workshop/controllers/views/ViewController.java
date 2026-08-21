@@ -1,8 +1,6 @@
 package com.adyen.workshop.controllers.views;
 
-import com.adyen.workshop.PreauthEventStore;
 import com.adyen.workshop.PreauthStore;
-import com.adyen.workshop.TokenEventStore;
 import com.adyen.workshop.TokenStore;
 import com.adyen.workshop.configurations.ApplicationConfiguration;
 import org.slf4j.Logger;
@@ -20,16 +18,12 @@ public class ViewController {
 
     private final ApplicationConfiguration applicationConfiguration;
     private final TokenStore tokenStore;
-    private final TokenEventStore tokenEventStore;
     private final PreauthStore preauthStore;
-    private final PreauthEventStore preauthEventStore;
 
-    public ViewController(ApplicationConfiguration applicationConfiguration, TokenStore tokenStore, TokenEventStore tokenEventStore, PreauthStore preauthStore, PreauthEventStore preauthEventStore) {
+    public ViewController(ApplicationConfiguration applicationConfiguration, TokenStore tokenStore, PreauthStore preauthStore) {
         this.applicationConfiguration = applicationConfiguration;
         this.tokenStore = tokenStore;
-        this.tokenEventStore = tokenEventStore;
         this.preauthStore = preauthStore;
-        this.preauthEventStore = preauthEventStore;
     }
 
     @GetMapping("/")
@@ -56,7 +50,6 @@ public class ViewController {
         var tokenRecord = tokenStore.get("shopperReference");
         model.addAttribute("token", tokenRecord != null ? tokenRecord.token() : null);
         model.addAttribute("cancelled", tokenRecord != null && tokenRecord.cancelled());
-        model.addAttribute("eventSequence", tokenEventStore.currentSequence());
         return "subscription";
     }
 
@@ -64,7 +57,6 @@ public class ViewController {
     @GetMapping("/preauthorisation")
     public String preauthorisation(Model model) {
         model.addAttribute("preauth", preauthStore.get());
-        model.addAttribute("eventSequence", preauthEventStore.currentSequence());
         return "preauthorisation";
     }
 
