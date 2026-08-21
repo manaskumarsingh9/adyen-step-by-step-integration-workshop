@@ -192,11 +192,16 @@ public class ApiController {
     // See: https://docs.adyen.com/online-payments/tokenization/make-token-payments
     @PostMapping("/api/subscription-payment")
     public ResponseEntity<?> subscriptionPayment() throws IOException, ApiException {
-        var token = tokenStore.get(SUBSCRIPTION_SHOPPER_REFERENCE);
-        if (token == null) {
+        var tokenRecord = tokenStore.get(SUBSCRIPTION_SHOPPER_REFERENCE);
+        if (tokenRecord == null) {
             log.warn("No stored token found for shopperReference {}, cannot charge subscription", SUBSCRIPTION_SHOPPER_REFERENCE);
             return ResponseEntity.unprocessableEntity().body("No stored token found for this shopper. Create a subscription first.");
         }
+
+        // Deliberately still attempt the charge even if this token was already cancelled -
+        // README_TOKENIZATION.md's checklist requires testing create -> payment -> cancel ->
+        // payment, i.e. charging again after cancelling, to observe Adyen reject the deleted token.
+        var token = tokenRecord.token();
 
         var paymentRequest = new PaymentRequest();
 
@@ -229,27 +234,31 @@ public class ApiController {
     // See: https://docs.adyen.com/online-payments/tokenization/managing-tokens/#delete-stored-details
     @PostMapping("/api/subscriptions-cancel")
     public ResponseEntity<?> subscriptionsCancel() throws IOException, ApiException {
-        var token = tokenStore.get(SUBSCRIPTION_SHOPPER_REFERENCE);
-        if (token == null) {
+        var tokenRecord = tokenStore.get(SUBSCRIPTION_SHOPPER_REFERENCE);
+        if (tokenRecord == null) {
             log.warn("No stored token found for shopperReference {}, nothing to cancel", SUBSCRIPTION_SHOPPER_REFERENCE);
             return ResponseEntity.unprocessableEntity().body("No stored token found for this shopper.");
         }
 
+        var token = tokenRecord.token();
         log.info("Deleting token {} for shopperReference {}", token, SUBSCRIPTION_SHOPPER_REFERENCE);
         recurringApi.deleteTokenForStoredPaymentDetails(token, SUBSCRIPTION_SHOPPER_REFERENCE, applicationConfiguration.getAdyenMerchantAccount());
-        tokenStore.remove(SUBSCRIPTION_SHOPPER_REFERENCE);
+        tokenStore.markCancelled(SUBSCRIPTION_SHOPPER_REFERENCE);
 
         return ResponseEntity.ok().build();
     }
 
     // Tokenization Module - Lightweight JSON status check, polled by subscription.js so the page
     // can show a toast once a tokenization webhook (create or charge) lands.
-    public record SubscriptionStatus(String token, TokenEventStore.Event lastEvent) {
+    public record SubscriptionStatus(String token, boolean cancelled, TokenEventStore.Event lastEvent) {
     }
 
     @GetMapping("/api/subscription/status")
     public ResponseEntity<SubscriptionStatus> subscriptionStatus() {
-        return ResponseEntity.ok(new SubscriptionStatus(tokenStore.get(SUBSCRIPTION_SHOPPER_REFERENCE), tokenEventStore.get()));
+        var tokenRecord = tokenStore.get(SUBSCRIPTION_SHOPPER_REFERENCE);
+        var token = tokenRecord != null ? tokenRecord.token() : null;
+        var cancelled = tokenRecord != null && tokenRecord.cancelled();
+        return ResponseEntity.ok(new SubscriptionStatus(token, cancelled, tokenEventStore.get()));
     }
 
     // Preauthorisation Module - Preauthorize a payment: authorize now, capture later.

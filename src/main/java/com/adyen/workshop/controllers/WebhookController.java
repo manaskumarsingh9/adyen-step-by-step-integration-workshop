@@ -156,16 +156,28 @@ public class WebhookController {
                     var current = preauthStore.get();
                     boolean matchesCurrent = current != null && current.pspReference().equals(item.getOriginalReference());
 
-                    // Once a preauthorisation is cancelled or refunded, there is nothing left to
-                    // capture/cancel/refund - clear the store so the UI reflects that (buttons
-                    // disable, amount clears) instead of continuing to show a hold that Adyen has
-                    // already released.
-                    if (matchesCurrent && ("CANCELLATION".equals(item.getEventCode()) || "TECHNICAL_CANCEL".equals(item.getEventCode()) || "REFUND".equals(item.getEventCode()))) {
-                        preauthStore.clear();
+                    // Keep the pspReference around (never clear it) even once cancelled/refunded -
+                    // README_PREAUTHORISATION.md's checklist deliberately requires attempting further
+                    // operations against an already-cancelled/refunded/captured preauth (e.g.
+                    // cancel -> capture, refund -> capture) to observe Adyen's real failure response.
+                    // Clearing the store would make those calls bounce off this app's own
+                    // "no pre-authorised payment found" guard before ever reaching Adyen. Just track
+                    // what actually happened via status, and let the UI/buttons stay usable so those
+                    // flows can be attempted for real.
+                    if (matchesCurrent && ("CANCELLATION".equals(item.getEventCode()) || "TECHNICAL_CANCEL".equals(item.getEventCode()))) {
+                        preauthStore.updateStatus("CANCELLED");
                     } else if (matchesCurrent && "CAPTURE".equals(item.getEventCode())) {
-                        // Mark the hold as captured so the UI can stop offering Modify/Capture/Cancel
-                        // (Adyen will reject those on an already-captured payment) and enable Refund.
                         preauthStore.updateStatus("CAPTURED");
+                    } else if (matchesCurrent && "REFUND".equals(item.getEventCode())) {
+                        preauthStore.updateStatus("REFUNDED");
+                    } else if (matchesCurrent && "REFUNDED_REVERSED".equals(item.getEventCode())) {
+                        // The shopper's bank rejected the refund transfer (e.g. closed account) and
+                        // the funds have been returned to us. Per Adyen's docs
+                        // (https://docs.adyen.com/online-payments/refund#refunded-reversed), the
+                        // payment's status becomes RefundedReversed - a distinct state from a normal
+                        // Captured payment, since a merchant would typically want to contact the
+                        // shopper about their bank details before attempting the refund again.
+                        preauthStore.updateStatus("REFUNDED_REVERSED");
                     } else if (matchesCurrent && "AUTHORISATION_ADJUSTMENT".equals(item.getEventCode()) && item.getAmount() != null) {
                         // The webhook's amount is the confirmed new total authorised amount - use it
                         // as ground truth instead of the value /api/modify-amount guessed when it

@@ -53,7 +53,9 @@ public class ViewController {
     // Tokenization Module - Shows the stored token and lets you charge or cancel the subscription.
     @GetMapping("/subscription")
     public String subscription(Model model) {
-        model.addAttribute("token", tokenStore.get("shopperReference"));
+        var tokenRecord = tokenStore.get("shopperReference");
+        model.addAttribute("token", tokenRecord != null ? tokenRecord.token() : null);
+        model.addAttribute("cancelled", tokenRecord != null && tokenRecord.cancelled());
         model.addAttribute("eventSequence", tokenEventStore.currentSequence());
         return "subscription";
     }

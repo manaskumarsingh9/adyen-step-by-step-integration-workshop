@@ -24,11 +24,18 @@
             <p th:unless="${preauth}">No preauthorisation yet. Start one from the home page.</p>
         </div>
 
+        <!--
+        Buttons are only gated on "does a preauthorisation exist at all", not on its current
+        status. README_PREAUTHORISATION.md's checklist deliberately requires attempting sequences
+        like capture -> cancel, cancel -> capture, and refund -> capture, so every button needs to
+        stay clickable in every state to actually reach Adyen and observe the real
+        success/failure webhook (e.g. CAPTURE_FAILED, TECHNICAL_CANCEL, REFUND_FAILED).
+        -->
         <div class="cart-footer">
-            <button id="modify-amount-button" class="button" th:disabled="${preauth == null or preauth.status() != 'AUTHORISED'}">Add 10.00 to amount</button>
-            <button id="capture-button" class="button" th:disabled="${preauth == null or preauth.status() != 'AUTHORISED'}">Capture</button>
-            <button id="cancel-button" class="button" th:disabled="${preauth == null or preauth.status() != 'AUTHORISED'}">Cancel</button>
-            <button id="refund-button" class="button" th:disabled="${preauth == null or preauth.status() != 'CAPTURED'}">Refund</button>
+            <button id="modify-amount-button" class="button" th:disabled="${preauth == null}">Add 10.00 to amount</button>
+            <button id="capture-button" class="button" th:disabled="${preauth == null}">Capture</button>
+            <button id="cancel-button" class="button" th:disabled="${preauth == null}">Cancel</button>
+            <button id="refund-button" class="button" th:disabled="${preauth == null}">Refund</button>
         </div>
 
         <div class="info">

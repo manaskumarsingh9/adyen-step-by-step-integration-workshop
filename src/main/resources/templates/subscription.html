@@ -15,10 +15,19 @@
 
         <!-- Token status, rendered by the server from the TokenStore -->
         <div class="order-summary" th:attr="data-token=${token != null ? token : ''}, data-event-sequence=${eventSequence}">
-            <p th:if="${token}">Stored token: <span th:text="${token}"></span></p>
+            <p th:if="${token}">
+                Stored token: <span th:text="${token}"></span><br/>
+                status: <span th:text="${cancelled} ? 'CANCELLED' : 'ACTIVE'"></span>
+            </p>
             <p th:unless="${token}">No subscription yet. Start one from the home page.</p>
         </div>
 
+        <!--
+        Buttons are only gated on "does a token exist at all", not on whether it's cancelled.
+        README_TOKENIZATION.md's checklist requires attempting create -> payment -> cancel ->
+        payment, i.e. charging again after cancelling, so Charge needs to stay clickable to
+        actually reach Adyen and observe the real rejection of the deleted token.
+        -->
         <div class="cart-footer">
             <button id="charge-button" class="button" th:disabled="${token == null}">Charge 5.00 now</button>
             <button id="cancel-button" class="button" th:disabled="${token == null}">Cancel subscription</button>

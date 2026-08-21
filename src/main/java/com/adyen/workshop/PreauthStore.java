@@ -34,8 +34,4 @@ public class PreauthStore {
     public void updateStatus(String newStatus) {
         current.updateAndGet(p -> p == null ? null : new Preauthorisation(p.pspReference(), p.reference(), p.amountValue(), p.currency(), newStatus));
     }
-
-    public void clear() {
-        current.set(null);
-    }
 }
