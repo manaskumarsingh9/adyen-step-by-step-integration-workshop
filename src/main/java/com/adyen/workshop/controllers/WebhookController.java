@@ -75,6 +75,7 @@ public class WebhookController {
             return ResponseEntity.unprocessableEntity().build();
         } catch (Exception e) {
             // Handle all other errors
+            log.error("Unexpected error handling webhook", e);
             return ResponseEntity.status(500).build();
         }
     }
