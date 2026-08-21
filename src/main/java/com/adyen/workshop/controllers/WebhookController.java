@@ -130,14 +130,25 @@ public class WebhookController {
                 if (item.isSuccess()) {
                     log.info("Preauthorisation event {} succeeded - pspReference {}, originalReference {}", item.getEventCode(), item.getPspReference(), item.getOriginalReference());
 
-                    // Once a preauthorisation is cancelled, there is nothing left to capture/cancel/
-                    // refund - clear the store so the UI reflects that (buttons disable, amount clears)
-                    // instead of continuing to show a hold that Adyen has already released.
-                    if ("CANCELLATION".equals(item.getEventCode()) || "TECHNICAL_CANCEL".equals(item.getEventCode())) {
-                        var current = preauthStore.get();
-                        if (current != null && current.pspReference().equals(item.getOriginalReference())) {
-                            preauthStore.clear();
-                        }
+                    var current = preauthStore.get();
+                    boolean matchesCurrent = current != null && current.pspReference().equals(item.getOriginalReference());
+
+                    // Once a preauthorisation is cancelled or refunded, there is nothing left to
+                    // capture/cancel/refund - clear the store so the UI reflects that (buttons
+                    // disable, amount clears) instead of continuing to show a hold that Adyen has
+                    // already released.
+                    if (matchesCurrent && ("CANCELLATION".equals(item.getEventCode()) || "TECHNICAL_CANCEL".equals(item.getEventCode()) || "REFUND".equals(item.getEventCode()))) {
+                        preauthStore.clear();
+                    } else if (matchesCurrent && "CAPTURE".equals(item.getEventCode())) {
+                        // Mark the hold as captured so the UI can stop offering Modify/Capture/Cancel
+                        // (Adyen will reject those on an already-captured payment) and enable Refund.
+                        preauthStore.updateStatus("CAPTURED");
+                    } else if (matchesCurrent && "AUTHORISATION_ADJUSTMENT".equals(item.getEventCode()) && item.getAmount() != null) {
+                        // The webhook's amount is the confirmed new total authorised amount - use it
+                        // as ground truth instead of the value /api/modify-amount guessed when it
+                        // fired the (async) request, so a failed adjustment doesn't leave the UI
+                        // showing an amount Adyen never actually applied.
+                        preauthStore.updateAmount(item.getAmount().getValue());
                     }
                 } else {
                     log.warn("Preauthorisation event {} failed - pspReference {}, reason {}", item.getEventCode(), item.getPspReference(), item.getReason());

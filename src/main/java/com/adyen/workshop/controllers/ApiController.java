@@ -317,10 +317,10 @@ public class ApiController {
         var response = modificationsApi.updateAuthorisedAmount(preauth.pspReference(), paymentAmountUpdateRequest);
         log.info("PaymentAmountUpdateResponse {}", response);
 
-        // The /amountUpdates response only means the request was received; the final outcome
-        // arrives via the AUTHORISATION_ADJUSTMENT webhook. We update our local tracker optimistically.
-        preauthStore.updateAmount(newAmountValue);
-
+        // The /amountUpdates response only means the request was received, not that Adyen applied
+        // it - the final outcome arrives via the AUTHORISATION_ADJUSTMENT webhook, which is what
+        // updates preauthStore. Updating it here too, before confirmation, would leave the UI
+        // showing a bumped amount even if the adjustment later fails.
         return ResponseEntity.ok().body(response);
     }
 

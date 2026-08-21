@@ -17,16 +17,17 @@
             <p th:if="${preauth}">
                 pspReference: <span th:text="${preauth.pspReference()}"></span><br/>
                 reference: <span th:text="${preauth.reference()}"></span><br/>
-                authorised amount: <span th:text="${preauth.amountValue()}"></span> <span th:text="${preauth.currency()}"></span>
+                authorised amount: <span th:text="${preauth.amountValue()}"></span> <span th:text="${preauth.currency()}"></span><br/>
+                status: <span th:text="${preauth.status()}"></span>
             </p>
             <p th:unless="${preauth}">No preauthorisation yet. Start one from the home page.</p>
         </div>
 
         <div class="cart-footer">
-            <button id="modify-amount-button" class="button" th:disabled="${preauth == null}">Add 10.00 to amount</button>
-            <button id="capture-button" class="button" th:disabled="${preauth == null}">Capture</button>
-            <button id="cancel-button" class="button" th:disabled="${preauth == null}">Cancel</button>
-            <button id="refund-button" class="button" th:disabled="${preauth == null}">Refund</button>
+            <button id="modify-amount-button" class="button" th:disabled="${preauth == null or preauth.status() != 'AUTHORISED'}">Add 10.00 to amount</button>
+            <button id="capture-button" class="button" th:disabled="${preauth == null or preauth.status() != 'AUTHORISED'}">Capture</button>
+            <button id="cancel-button" class="button" th:disabled="${preauth == null or preauth.status() != 'AUTHORISED'}">Cancel</button>
+            <button id="refund-button" class="button" th:disabled="${preauth == null or preauth.status() != 'CAPTURED'}">Refund</button>
         </div>
 
         <div class="info">

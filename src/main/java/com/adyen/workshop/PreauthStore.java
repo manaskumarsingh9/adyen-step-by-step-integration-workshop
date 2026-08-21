@@ -14,13 +14,13 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 @Component
 public class PreauthStore {
-    public record Preauthorisation(String pspReference, String reference, long amountValue, String currency) {
+    public record Preauthorisation(String pspReference, String reference, long amountValue, String currency, String status) {
     }
 
     private final AtomicReference<Preauthorisation> current = new AtomicReference<>();
 
     public void store(String pspReference, String reference, long amountValue, String currency) {
-        current.set(new Preauthorisation(pspReference, reference, amountValue, currency));
+        current.set(new Preauthorisation(pspReference, reference, amountValue, currency, "AUTHORISED"));
     }
 
     public Preauthorisation get() {
@@ -28,7 +28,11 @@ public class PreauthStore {
     }
 
     public void updateAmount(long newAmountValue) {
-        current.updateAndGet(p -> p == null ? null : new Preauthorisation(p.pspReference(), p.reference(), newAmountValue, p.currency()));
+        current.updateAndGet(p -> p == null ? null : new Preauthorisation(p.pspReference(), p.reference(), newAmountValue, p.currency(), p.status()));
+    }
+
+    public void updateStatus(String newStatus) {
+        current.updateAndGet(p -> p == null ? null : new Preauthorisation(p.pspReference(), p.reference(), p.amountValue(), p.currency(), newStatus));
     }
 
     public void clear() {
