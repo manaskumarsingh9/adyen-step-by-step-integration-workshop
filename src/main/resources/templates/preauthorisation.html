@@ -14,6 +14,7 @@
         </div>
 
         <div class="order-summary"
+             th:attr="data-psp=${preauth != null ? preauth.pspReference() : ''}, data-status=${preauth != null ? preauth.status() : ''}, data-amount=${preauth != null ? preauth.amountValue() : ''}, data-event-sequence=${eventSequence}">
             <p th:if="${preauth}">
                 pspReference: <span th:text="${preauth.pspReference()}"></span><br/>
                 reference: <span th:text="${preauth.reference()}"></span><br/>
@@ -43,6 +44,8 @@
             <p id="status"></p>
         </div>
     </div>
+
+    <div id="webhook-toast" class="webhook-toast" role="status" aria-live="polite"></div>
 
     <script type="text/javascript" src="/preauthorisation.js"></script>
 </main>

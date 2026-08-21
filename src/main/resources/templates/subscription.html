@@ -14,7 +14,7 @@
         </div>
 
         <!-- Token status, rendered by the server from the TokenStore -->
-        <div class="order-summary" th:attr="data-token=${token != null ? token : ''}">
+        <div class="order-summary" th:attr="data-token=${token != null ? token : ''}, data-event-sequence=${eventSequence}">
             <p th:if="${token}">
                 Stored token: <span th:text="${token}"></span><br/>
                 status: <span th:text="${cancelled} ? 'CANCELLED' : 'ACTIVE'"></span>
@@ -50,6 +50,8 @@
             <button id="manual-charge-button" class="button">Charge with this token</button>
         </div>
     </div>
+
+    <div id="webhook-toast" class="webhook-toast" role="status" aria-live="polite"></div>
 
     <script type="text/javascript" src="/subscription.js"></script>
 </main>
