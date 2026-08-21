@@ -14,7 +14,7 @@
         </div>
 
         <!-- Token status, rendered by the server from the TokenStore -->
-        <div class="order-summary">
+        <div class="order-summary" th:attr="data-token=${token != null ? token : ''}, data-event-sequence=${eventSequence}">
             <p th:if="${token}">Stored token: <span th:text="${token}"></span></p>
             <p th:unless="${token}">No subscription yet. Start one from the home page.</p>
         </div>
@@ -28,6 +28,8 @@
             <p id="status"></p>
         </div>
     </div>
+
+    <div id="webhook-toast" class="webhook-toast" role="status" aria-live="polite"></div>
 
     <script type="text/javascript" src="/subscription.js"></script>
 </main>

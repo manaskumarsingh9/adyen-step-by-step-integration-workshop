@@ -1,15 +1,57 @@
 // Preauthorisation Module - Drives /api/modify-amount, /api/capture, /api/cancel, /api/refund.
 const statusElement = document.getElementById("status");
 const summaryElement = document.querySelector(".order-summary");
+const toastElement = document.getElementById("webhook-toast");
+
+const TOAST_VISIBLE_MS = 3000;
+
+const EVENT_LABELS = {
+    AUTHORISATION_ADJUSTMENT: { success: "Amount updated", failure: "Amount update failed" },
+    CAPTURE: { success: "Payment captured", failure: "Capture failed" },
+    CAPTURE_FAILED: { success: "Payment captured", failure: "Capture failed" },
+    CANCELLATION: { success: "Preauthorisation cancelled", failure: "Cancel failed" },
+    TECHNICAL_CANCEL: { success: "Preauthorisation cancelled", failure: "Cancel failed" },
+    REFUND: { success: "Payment refunded", failure: "Refund failed" },
+    REFUND_FAILED: { success: "Payment refunded", failure: "Refund failed" },
+    REFUNDED_REVERSED: { success: "Refund reversed - amount returned to merchant", failure: "Refund reversal failed" }
+};
+
+function buildToastMessage(event) {
+    const labels = EVENT_LABELS[event.eventCode] || { success: event.eventCode, failure: event.eventCode + " failed" };
+    let message = event.success ? labels.success : labels.failure;
+    if (!event.success && event.reason) {
+        message += ": " + event.reason;
+    }
+    return message;
+}
+
+let toastHideTimeoutId = null;
+
+// Shows a card in the corner of the page reporting what the webhook said happened, then fades it
+// out again after a couple of seconds.
+function showToast(message, isFailure) {
+    toastElement.textContent = message;
+    toastElement.classList.toggle("webhook-toast-failure", !!isFailure);
+    toastElement.classList.add("webhook-toast-visible");
+
+    if (toastHideTimeoutId) {
+        clearTimeout(toastHideTimeoutId);
+    }
+    toastHideTimeoutId = setTimeout(() => {
+        toastElement.classList.remove("webhook-toast-visible");
+    }, TOAST_VISIBLE_MS);
+}
 
 // The modification APIs are asynchronous: the POST above only confirms Adyen *received* the
 // request, not the outcome - that arrives later via a webhook to /webhooks, which updates
-// PreauthStore server-side. Poll the lightweight status endpoint until that change shows up,
-// then reload so the shopper doesn't have to refresh manually.
+// PreauthStore and PreauthEventStore server-side. Poll the lightweight status endpoint until a
+// new event shows up: pop a toast with what it said, then reload once the store actually changed
+// so the shopper doesn't have to refresh manually.
 function pollUntilChanged(successMessage) {
     const baselinePsp = summaryElement.dataset.psp;
     const baselineStatus = summaryElement.dataset.status;
     const baselineAmount = summaryElement.dataset.amount;
+    let lastSeenSequence = parseInt(summaryElement.dataset.eventSequence, 10) || 0;
 
     let elapsedMs = 0;
     const intervalMs = 3000;
@@ -19,16 +61,24 @@ function pollUntilChanged(successMessage) {
         elapsedMs += intervalMs;
         try {
             const response = await fetch("/api/preauthorisation/status");
-            const text = await response.text();
-            const current = (!text || text === "null") ? null : JSON.parse(text);
+            const data = await response.json();
+            const current = data.preauth;
+            const event = data.lastEvent;
 
-            const changed = current === null
-                ? baselinePsp !== ""
-                : (current.pspReference !== baselinePsp || current.status !== baselineStatus || String(current.amountValue) !== baselineAmount);
+            let stateChanged = false;
+            if (event && event.sequence > lastSeenSequence) {
+                lastSeenSequence = event.sequence;
+                showToast(buildToastMessage(event), !event.success);
 
-            if (changed) {
+                stateChanged = current === null
+                    ? baselinePsp !== ""
+                    : (current.pspReference !== baselinePsp || current.status !== baselineStatus || String(current.amountValue) !== baselineAmount);
+            }
+
+            if (stateChanged) {
                 clearInterval(intervalId);
-                location.reload();
+                // Give the toast a moment to be read before the reload wipes it away.
+                setTimeout(() => location.reload(), TOAST_VISIBLE_MS);
                 return;
             }
         } catch (error) {

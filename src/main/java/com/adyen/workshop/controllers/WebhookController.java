@@ -3,7 +3,9 @@ package com.adyen.workshop.controllers;
 import com.adyen.model.notification.NotificationRequest;
 import com.adyen.model.notification.NotificationRequestItem;
 import com.adyen.util.HMACValidator;
+import com.adyen.workshop.PreauthEventStore;
 import com.adyen.workshop.PreauthStore;
+import com.adyen.workshop.TokenEventStore;
 import com.adyen.workshop.TokenStore;
 import com.adyen.workshop.configurations.ApplicationConfiguration;
 import org.apache.coyote.Response;
@@ -33,14 +35,20 @@ public class WebhookController {
 
     private final TokenStore tokenStore;
 
+    private final TokenEventStore tokenEventStore;
+
     private final PreauthStore preauthStore;
 
+    private final PreauthEventStore preauthEventStore;
+
     @Autowired
-    public WebhookController(ApplicationConfiguration applicationConfiguration, HMACValidator hmacValidator, TokenStore tokenStore, PreauthStore preauthStore) {
+    public WebhookController(ApplicationConfiguration applicationConfiguration, HMACValidator hmacValidator, TokenStore tokenStore, TokenEventStore tokenEventStore, PreauthStore preauthStore, PreauthEventStore preauthEventStore) {
         this.applicationConfiguration = applicationConfiguration;
         this.hmacValidator = hmacValidator;
         this.tokenStore = tokenStore;
+        this.tokenEventStore = tokenEventStore;
         this.preauthStore = preauthStore;
+        this.preauthEventStore = preauthEventStore;
     }
 
     // Step 16 - Validate the HMAC signature using the ADYEN_HMAC_KEY
@@ -93,15 +101,25 @@ public class WebhookController {
             return;
         }
 
-        var recurringDetailReference = additionalData.get("recurring.recurringDetailReference");
         var shopperReference = additionalData.get("recurring.shopperReference");
-
-        if (recurringDetailReference == null || shopperReference == null) {
+        if (shopperReference == null) {
+            // Not a subscription-create/charge webhook (e.g. a plain Part 1 checkout payment,
+            // which doesn't set shopperReference) - nothing to do here.
             return;
         }
 
+        // Record every attempt (success or failure) tied to the subscription shopper, so the
+        // frontend can poll for it and show a toast notification reflecting what Adyen actually
+        // reported - independent of whether it also carried a usable token below.
+        tokenEventStore.record(item.getEventCode(), item.isSuccess(), item.getReason());
+
         if (!item.isSuccess()) {
             log.warn("Ignoring token from unsuccessful webhook, eventCode {}", item.getEventCode());
+            return;
+        }
+
+        var recurringDetailReference = additionalData.get("recurring.recurringDetailReference");
+        if (recurringDetailReference == null) {
             return;
         }
 
@@ -128,6 +146,10 @@ public class WebhookController {
             case "REFUND":
             case "REFUND_FAILED":
             case "REFUNDED_REVERSED":
+                // Record every attempt (success or failure) so the frontend can poll for it and
+                // show a toast notification reflecting what Adyen actually reported.
+                preauthEventStore.record(item.getEventCode(), item.isSuccess(), item.getReason());
+
                 if (item.isSuccess()) {
                     log.info("Preauthorisation event {} succeeded - pspReference {}, originalReference {}", item.getEventCode(), item.getPspReference(), item.getOriginalReference());
 

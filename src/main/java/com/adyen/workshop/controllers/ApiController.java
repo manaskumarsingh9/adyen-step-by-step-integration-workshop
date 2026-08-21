@@ -2,7 +2,9 @@ package com.adyen.workshop.controllers;
 
 import com.adyen.model.RequestOptions;
 import com.adyen.model.checkout.*;
+import com.adyen.workshop.PreauthEventStore;
 import com.adyen.workshop.PreauthStore;
+import com.adyen.workshop.TokenEventStore;
 import com.adyen.workshop.TokenStore;
 import com.adyen.workshop.configurations.ApplicationConfiguration;
 import com.adyen.service.checkout.ModificationsApi;
@@ -39,15 +41,19 @@ public class ApiController {
     private final RecurringApi recurringApi;
     private final ModificationsApi modificationsApi;
     private final TokenStore tokenStore;
+    private final TokenEventStore tokenEventStore;
     private final PreauthStore preauthStore;
+    private final PreauthEventStore preauthEventStore;
 
-    public ApiController(ApplicationConfiguration applicationConfiguration, PaymentsApi paymentsApi, RecurringApi recurringApi, ModificationsApi modificationsApi, TokenStore tokenStore, PreauthStore preauthStore) {
+    public ApiController(ApplicationConfiguration applicationConfiguration, PaymentsApi paymentsApi, RecurringApi recurringApi, ModificationsApi modificationsApi, TokenStore tokenStore, TokenEventStore tokenEventStore, PreauthStore preauthStore, PreauthEventStore preauthEventStore) {
         this.applicationConfiguration = applicationConfiguration;
         this.paymentsApi = paymentsApi;
         this.recurringApi = recurringApi;
         this.modificationsApi = modificationsApi;
         this.tokenStore = tokenStore;
+        this.tokenEventStore = tokenEventStore;
         this.preauthStore = preauthStore;
+        this.preauthEventStore = preauthEventStore;
     }
 
     // Step 0
@@ -236,6 +242,16 @@ public class ApiController {
         return ResponseEntity.ok().build();
     }
 
+    // Tokenization Module - Lightweight JSON status check, polled by subscription.js so the page
+    // can show a toast once a tokenization webhook (create or charge) lands.
+    public record SubscriptionStatus(String token, TokenEventStore.Event lastEvent) {
+    }
+
+    @GetMapping("/api/subscription/status")
+    public ResponseEntity<SubscriptionStatus> subscriptionStatus() {
+        return ResponseEntity.ok(new SubscriptionStatus(tokenStore.get(SUBSCRIPTION_SHOPPER_REFERENCE), tokenEventStore.get()));
+    }
+
     // Preauthorisation Module - Preauthorize a payment: authorize now, capture later.
     // additionalData.authorisationType=PreAuth lets us adjust the amount afterwards; additionalData.manualCapture=true
     // means Adyen won't auto-capture on authorisation, so we can capture explicitly via /api/capture.
@@ -394,11 +410,14 @@ public class ApiController {
     }
 
     // Preauthorisation Module - Lightweight JSON status check, polled by preauthorisation.js so the
-    // page can reload itself once a modification webhook lands, instead of the shopper needing to
-    // refresh manually while waiting for Adyen's async confirmation.
+    // page can reload itself and show a toast once a modification webhook lands, instead of the
+    // shopper needing to refresh manually while waiting for Adyen's async confirmation.
+    public record PreauthStatus(PreauthStore.Preauthorisation preauth, PreauthEventStore.Event lastEvent) {
+    }
+
     @GetMapping("/api/preauthorisation/status")
-    public ResponseEntity<PreauthStore.Preauthorisation> preauthorisationStatus() {
-        return ResponseEntity.ok(preauthStore.get());
+    public ResponseEntity<PreauthStatus> preauthorisationStatus() {
+        return ResponseEntity.ok(new PreauthStatus(preauthStore.get(), preauthEventStore.get()));
     }
 
     // Step 13 - Handle details call (triggered after Native 3DS2 flow)

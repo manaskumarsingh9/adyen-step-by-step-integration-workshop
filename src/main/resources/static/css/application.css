@@ -430,4 +430,33 @@ a:hover {
     }
 }
 
+.webhook-toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    max-width: 320px;
+    padding: 14px 18px;
+    border-radius: 6px;
+    background: #00112c;
+    color: #fff;
+    font-size: 14px;
+    line-height: 1.4;
+    box-shadow: 0 8px 24px rgba(0, 17, 44, 0.25);
+    border-left: 4px solid #0abf53;
+    opacity: 0;
+    transform: translateY(12px);
+    pointer-events: none;
+    transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+    z-index: 1000;
+}
+
+.webhook-toast.webhook-toast-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.webhook-toast.webhook-toast-failure {
+    border-left-color: #d64545;
+}
+
 /* end Status page */
