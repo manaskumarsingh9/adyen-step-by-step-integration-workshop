@@ -91,9 +91,12 @@ public class WebhookController {
     /**
      * Tokenization Module - Extract and store the token created by /api/subscription-create.
      *
-     * Adyen sends the token in the `recurring.recurringDetailReference` field of the webhook's
-     * additionalData. Depending on your Customer Area "Additional data" settings this arrives on
-     * the AUTHORISATION webhook, and/or as a separate RECURRING_CONTRACT webhook.
+     * Depending on the merchant account's Customer Area "Additional data" settings, Adyen surfaces
+     * the shopper/token identifiers under different additionalData key prefixes: "recurring.*" for
+     * the classic Recurring API, "tokenization.*" for the newer unified Tokenization API (what this
+     * account actually sends - confirmed from the live webhook payloads, which carry
+     * tokenization.shopperReference / tokenization.storedPaymentMethodId, not recurring.*). Check
+     * both so this keeps working regardless of which one a given account is configured to send.
      */
     private void handleTokenizationWebhook(NotificationRequestItem item) {
         var additionalData = item.getAdditionalData();
@@ -101,10 +104,13 @@ public class WebhookController {
             return;
         }
 
-        var shopperReference = additionalData.get("recurring.shopperReference");
+        var shopperReference = additionalData.get("tokenization.shopperReference");
+        if (shopperReference == null) {
+            shopperReference = additionalData.get("recurring.shopperReference");
+        }
         if (shopperReference == null) {
             // Not a subscription-create/charge webhook (e.g. a plain Part 1 checkout payment,
-            // which doesn't set shopperReference) - nothing to do here.
+            // which doesn't tokenize a card) - nothing to do here.
             return;
         }
 
@@ -118,7 +124,10 @@ public class WebhookController {
             return;
         }
 
-        var recurringDetailReference = additionalData.get("recurring.recurringDetailReference");
+        var recurringDetailReference = additionalData.get("tokenization.storedPaymentMethodId");
+        if (recurringDetailReference == null) {
+            recurringDetailReference = additionalData.get("recurring.recurringDetailReference");
+        }
         if (recurringDetailReference == null) {
             return;
         }
