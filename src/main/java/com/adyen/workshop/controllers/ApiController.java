@@ -150,13 +150,14 @@ public class ApiController {
 
     // Tokenization Module - Zero-value payment to tokenize the shopper's card for future (subscription) use.
     // See: https://docs.adyen.com/online-payments/tokenization/create-tokens
+    // Currency/amount per the Adyen Partnerships Team validation script: "Successful payment of 0 USD".
     @PostMapping("/api/subscription-create")
     public ResponseEntity<PaymentResponse> subscriptionCreate(@RequestBody PaymentRequest body) throws IOException, ApiException {
         var paymentRequest = new PaymentRequest();
 
         // Zero-auth: authorize for 0 to validate/tokenize the card without charging the shopper.
         var amount = new Amount()
-                .currency("EUR")
+                .currency("USD")
                 .value(0L);
         paymentRequest.setAmount(amount);
         paymentRequest.setMerchantAccount(applicationConfiguration.getAdyenMerchantAccount());
@@ -205,9 +206,11 @@ public class ApiController {
 
         var paymentRequest = new PaymentRequest();
 
+        // Same currency as the USD zero-auth in subscriptionCreate() - a recurring charge should
+        // stay in the currency the token was created with.
         var amount = new Amount()
-                .currency("EUR")
-                .value(500L); // 5 euros/month, per the briefing
+                .currency("USD")
+                .value(500L); // 5/month, per the briefing
         paymentRequest.setAmount(amount);
         paymentRequest.setMerchantAccount(applicationConfiguration.getAdyenMerchantAccount());
         paymentRequest.setChannel(PaymentRequest.ChannelEnum.WEB);
@@ -242,8 +245,8 @@ public class ApiController {
         var paymentRequest = new PaymentRequest();
 
         var amount = new Amount()
-                .currency("EUR")
-                .value(500L); // 5 euros/month, per the briefing
+                .currency("USD")
+                .value(500L); // 5/month, per the briefing
         paymentRequest.setAmount(amount);
         paymentRequest.setMerchantAccount(applicationConfiguration.getAdyenMerchantAccount());
         paymentRequest.setChannel(PaymentRequest.ChannelEnum.WEB);
@@ -302,13 +305,15 @@ public class ApiController {
     // means Adyen won't auto-capture on authorisation, so we can capture explicitly via /api/capture.
     // See: https://docs.adyen.com/online-payments/adjust-authorisation/adjust-with-preauth/#pre-authorize
     // and: https://docs.adyen.com/online-payments/capture/?tab=individual_payment_1_2
+    // Currency/amount per the Adyen Partnerships Team validation script: "Successful preAuth payment
+    // of 10 USD".
     @PostMapping("/api/preauthorisation")
     public ResponseEntity<PaymentResponse> preauthorisation(@RequestBody PaymentRequest body) throws IOException, ApiException {
         var paymentRequest = new PaymentRequest();
 
         var amount = new Amount()
-                .currency("EUR")
-                .value(9998L);
+                .currency("USD")
+                .value(1000L);
         paymentRequest.setAmount(amount);
         paymentRequest.setMerchantAccount(applicationConfiguration.getAdyenMerchantAccount());
         paymentRequest.setChannel(PaymentRequest.ChannelEnum.WEB);
@@ -354,7 +359,10 @@ public class ApiController {
         return ResponseEntity.ok().body(response);
     }
 
-    // Preauthorisation Module - Adjust (increase) the pre-authorized amount (asynchronous flow).
+    // Preauthorisation Module - Adjust the pre-authorized amount to a new total (asynchronous flow).
+    // The validation script phrases this as an absolute target ("bump the amount to 66 USD"), and
+    // Adyen's amountUpdates API itself takes the new total authorised amount, not a delta - so the
+    // caller supplies the target amount directly rather than an increment to add.
     // See: https://docs.adyen.com/online-payments/adjust-authorisation/adjust-with-preauth/#adjust-auth
     @PostMapping("/api/modify-amount")
     public ResponseEntity<?> modifyAmount(@RequestBody(required = false) Map<String, Long> body) throws IOException, ApiException {
@@ -364,9 +372,8 @@ public class ApiController {
             return ResponseEntity.unprocessableEntity().body("No pre-authorised payment found. Preauthorize a payment first.");
         }
 
-        // Default demo increment if the caller doesn't specify one: add 10.00 EUR.
-        long additionalAmount = (body != null && body.get("additionalAmount") != null) ? body.get("additionalAmount") : 1000L;
-        long newAmountValue = preauth.amountValue() + additionalAmount;
+        // Default target if the caller doesn't specify one: the validation script's 66 USD.
+        long newAmountValue = (body != null && body.get("amount") != null) ? body.get("amount") : 6600L;
 
         var paymentAmountUpdateRequest = new PaymentAmountUpdateRequest();
         paymentAmountUpdateRequest.setMerchantAccount(applicationConfiguration.getAdyenMerchantAccount());

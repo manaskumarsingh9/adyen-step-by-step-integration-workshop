@@ -32,7 +32,9 @@
         success/failure webhook (e.g. CAPTURE_FAILED, TECHNICAL_CANCEL, REFUND_FAILED).
         -->
         <div class="cart-footer">
-            <button id="modify-amount-button" class="button" th:disabled="${preauth == null}">Add 10.00 to amount</button>
+            <input type="number" id="modify-amount-input" class="text-input" step="0.01" min="0"
+                   placeholder="New authorised amount (e.g. 66.00)"/>
+            <button id="modify-amount-button" class="button" th:disabled="${preauth == null}">Update amount</button>
             <button id="capture-button" class="button" th:disabled="${preauth == null}">Capture</button>
             <button id="cancel-button" class="button" th:disabled="${preauth == null}">Cancel</button>
             <button id="refund-button" class="button" th:disabled="${preauth == null}">Refund</button>

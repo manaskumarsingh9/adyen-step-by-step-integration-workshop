@@ -119,7 +119,15 @@ async function callEndpoint(endpoint, successMessage, body) {
 }
 
 document.getElementById("modify-amount-button").addEventListener("click", () => {
-    callEndpoint("/api/modify-amount", "Amount modification requested", { additionalAmount: 1000 });
+    const amountInput = document.getElementById("modify-amount-input");
+    const amount = parseFloat(amountInput.value);
+    if (isNaN(amount) || amount < 0) {
+        statusElement.innerHTML = "Enter a new authorised amount first, e.g. 66.00.";
+        return;
+    }
+
+    // Adyen amounts are in minor units (cents), so 66.00 becomes 6600.
+    callEndpoint("/api/modify-amount", "Amount modification requested", { amount: Math.round(amount * 100) });
 });
 
 document.getElementById("capture-button").addEventListener("click", () => {

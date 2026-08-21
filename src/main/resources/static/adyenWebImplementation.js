@@ -107,8 +107,11 @@ async function startCheckout() {
                 name: "Credit or debit card",
                 amount: {
                     // Subscriptions tokenize with a zero-value payment, so the pay button shows 0.
-                    value: isSubscription ? 0 : 9998,
-                    currency: "EUR",
+                    // Preauthorisation amount/currency (10 USD) matches the Adyen Partnerships Team
+                    // validation script's "Successful preAuth payment of 10 USD" - the backend's
+                    // /api/preauthorisation charges this same amount, see ApiController.
+                    value: isSubscription ? 0 : isPreauthorisation ? 1000 : 9998,
+                    currency: isSubscription || isPreauthorisation ? "USD" : "EUR",
                 },
                 placeholders: {
                     cardNumber: '1234 5678 9012 3456',
