@@ -81,12 +81,6 @@ function connect() {
     // The browser retries automatically (with the native Last-Event-ID header) after a dropped
     // connection - nothing to do here.
     eventSource.onerror = (error) => console.error("Notification stream error", error);
-
-    // Without this, navigating away leaves the connection open until the server notices the
-    // socket is dead (only on its next write attempt, logged loudly by Tomcat as a broken pipe).
-    // Closing it here tells the server immediately, so ordinary page navigation never accumulates
-    // stale connections for later broadcasts to trip over.
-    window.addEventListener("pagehide", () => eventSource.close());
 }
 
 connect();
